@@ -42,17 +42,20 @@
       #${OVERLAY_ID} .altq-panel {
         width: 100%;
         height: 100%;
-        overflow: auto;
+        overflow-y: auto;
+        overflow-x: hidden;
         padding: 28px;
         box-sizing: border-box;
       }
       #${OVERLAY_ID} .altq-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
         gap: 14px;
         align-content: start;
+        justify-items: center;
       }
       #${OVERLAY_ID} .altq-cell {
+        width: 100%;
         aspect-ratio: 1 / 1;
         border-radius: 12px;
         background: rgba(15, 23, 42, 0.46);
@@ -81,7 +84,7 @@
           padding: 16px;
         }
         #${OVERLAY_ID} .altq-grid {
-          grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+          grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
           gap: 10px;
         }
         #${OVERLAY_ID} .altq-icon {
