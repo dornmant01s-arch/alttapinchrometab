@@ -166,6 +166,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           id: tab.id,
           title: tab.title || 'Untitled tab',
           favIconUrl: tab.favIconUrl || '',
+          url: tab.url || '',
           active: Boolean(tab.active)
         })),
         thumbnailsByTab
