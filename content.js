@@ -15,6 +15,8 @@
   let savedBodyOverflow = '';
   let savedHtmlOverflow = '';
   let scrollLockActive = false;
+  let gridCols = 1;
+  let gridRows = 1;
 
   function ensureStyles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -44,20 +46,20 @@
         height: 100%;
         overflow-y: auto;
         overflow-x: hidden;
-        padding: 28px;
+        padding: 20px;
         box-sizing: border-box;
       }
       #${OVERLAY_ID} .altq-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
-        gap: 14px;
-        align-content: start;
-        justify-items: center;
+        gap: 12px;
+        width: 100%;
+        min-height: calc(100vh - 40px);
+        align-content: stretch;
       }
       #${OVERLAY_ID} .altq-cell {
         width: 100%;
-        aspect-ratio: 1 / 1;
-        border-radius: 12px;
+        min-height: 64px;
+        border-radius: 14px;
         background: rgba(15, 23, 42, 0.46);
         border: 1px solid rgba(148, 163, 184, 0.18);
         display: flex;
@@ -65,31 +67,30 @@
         justify-content: center;
         transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
         cursor: pointer;
+        padding: 0;
       }
       #${OVERLAY_ID} .altq-cell:hover {
         transform: translateY(-1px);
       }
       #${OVERLAY_ID} .altq-cell.altq-selected {
         border-color: rgba(96, 165, 250, 0.95);
-        box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.45), 0 8px 18px rgba(15, 23, 42, 0.5);
+        box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.5), 0 10px 22px rgba(15, 23, 42, 0.55);
         transform: scale(1.02);
       }
       #${OVERLAY_ID} .altq-icon {
-        width: 36px;
-        height: 36px;
+        width: var(--altq-icon-size, 36px);
+        height: var(--altq-icon-size, 36px);
         border-radius: 8px;
+        pointer-events: none;
+        user-select: none;
       }
       @media (max-width: 640px) {
         #${OVERLAY_ID} .altq-panel {
-          padding: 16px;
+          padding: 12px;
         }
         #${OVERLAY_ID} .altq-grid {
-          grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+          min-height: calc(100vh - 24px);
           gap: 10px;
-        }
-        #${OVERLAY_ID} .altq-icon {
-          width: 30px;
-          height: 30px;
         }
       }
     `;
@@ -151,6 +152,59 @@
     return img;
   }
 
+  function computeGridLayout(tabCount) {
+    const viewportW = Math.max(320, window.innerWidth - 40);
+    const viewportH = Math.max(220, window.innerHeight - 40);
+
+    if (tabCount <= 1) {
+      return { cols: 1, rows: 1 };
+    }
+    if (tabCount === 2) {
+      return viewportW >= viewportH ? { cols: 2, rows: 1 } : { cols: 1, rows: 2 };
+    }
+
+    let best = { cols: 1, rows: tabCount, score: Number.POSITIVE_INFINITY };
+
+    for (let cols = 1; cols <= tabCount; cols += 1) {
+      const rows = Math.ceil(tabCount / cols);
+      const cellW = viewportW / cols;
+      const cellH = viewportH / rows;
+      const aspectPenalty = Math.abs(cellW - cellH) / Math.max(cellW, cellH);
+      const emptyPenalty = (cols * rows - tabCount) * 0.08;
+      const shapePenalty = Math.abs(cols - rows) * 0.06;
+      const score = aspectPenalty + emptyPenalty + shapePenalty;
+
+      if (score < best.score) {
+        best = { cols, rows, score };
+      }
+    }
+
+    return { cols: best.cols, rows: best.rows };
+  }
+
+  function applyGridLayout() {
+    if (!grid) return;
+    const count = tabs.length;
+    const layout = computeGridLayout(count);
+    gridCols = Math.max(1, layout.cols);
+    gridRows = Math.max(1, layout.rows);
+
+    grid.style.gridTemplateColumns = `repeat(${gridCols}, minmax(64px, 1fr))`;
+    grid.style.gridTemplateRows = `repeat(${gridRows}, minmax(64px, 1fr))`;
+
+    const gridWidth = Math.max(1, grid.clientWidth || panel?.clientWidth || window.innerWidth);
+    const gridHeight = Math.max(1, grid.clientHeight || panel?.clientHeight || window.innerHeight);
+    const cellSize = Math.min(gridWidth / gridCols, gridHeight / gridRows);
+    const iconSize = Math.max(24, Math.min(96, Math.round(cellSize * 0.4)));
+    grid.style.setProperty('--altq-icon-size', `${iconSize}px`);
+
+    console.debug('[AltQ] overlay open', {
+      tabCount: count,
+      computedCols: gridCols,
+      computedRows: gridRows
+    });
+  }
+
   function buildCell(tab, isSelected, index) {
     const cell = document.createElement('button');
     cell.type = 'button';
@@ -177,6 +231,8 @@
       grid.appendChild(buildCell(tab, idx === selectedIndex, idx));
     });
 
+    applyGridLayout();
+
     const selected = grid.children[selectedIndex];
     if (selected?.scrollIntoView) {
       selected.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
@@ -184,9 +240,7 @@
   }
 
   function getGridColumns() {
-    if (!grid) return 1;
-    const cols = window.getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length;
-    return Math.max(1, cols || 1);
+    return Math.max(1, gridCols || 1);
   }
 
   function moveSelectionBy(step) {
@@ -203,6 +257,7 @@
         overlayRoot.setAttribute('aria-hidden', 'true');
       }
       window.removeEventListener('keydown', handleOverlayKeydown, true);
+      window.removeEventListener('resize', handleResize, true);
     } finally {
       unlockPageScroll();
     }
@@ -260,6 +315,11 @@
     }
   }
 
+  function handleResize() {
+    if (!overlayOpen) return;
+    applyGridLayout();
+  }
+
   async function fetchData() {
     try {
       const response = await chrome.runtime.sendMessage({ type: 'GET_SWITCHER_DATA' });
@@ -312,6 +372,8 @@
       render();
       window.removeEventListener('keydown', handleOverlayKeydown, true);
       window.addEventListener('keydown', handleOverlayKeydown, true);
+      window.removeEventListener('resize', handleResize, true);
+      window.addEventListener('resize', handleResize, true);
     } catch (_err) {
       closeOverlay();
     }
