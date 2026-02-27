@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Alt+Q Tab Switcher",
+  "version": "1.0.0",
+  "description": "Alt-Tab style tab switcher overlay for Chrome tabs in the current window.",
+  "permissions": ["tabs", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "toggle-switcher": {
+      "suggested_key": {
+        "default": "Alt+Q"
+      },
+      "description": "Open or advance the tab switcher overlay"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
