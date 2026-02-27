@@ -14,6 +14,7 @@
   let lastTriggerAt = 0;
   let savedBodyOverflow = '';
   let savedHtmlOverflow = '';
+  let scrollLockActive = false;
 
   function ensureStyles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -121,15 +122,19 @@
   }
 
   function lockPageScroll() {
+    if (scrollLockActive) return;
     savedBodyOverflow = document.body.style.overflow;
     savedHtmlOverflow = document.documentElement.style.overflow;
     document.body.style.overflow = 'hidden';
     document.documentElement.style.overflow = 'hidden';
+    scrollLockActive = true;
   }
 
   function unlockPageScroll() {
+    if (!scrollLockActive) return;
     document.body.style.overflow = savedBodyOverflow;
     document.documentElement.style.overflow = savedHtmlOverflow;
+    scrollLockActive = false;
   }
 
   function createIcon(src) {
@@ -188,28 +193,29 @@
   }
 
   function closeOverlay() {
-    if (!overlayOpen || !overlayRoot) return;
-    overlayOpen = false;
-    overlayRoot.classList.remove('altq-open');
-    overlayRoot.setAttribute('aria-hidden', 'true');
-    window.removeEventListener('keydown', handleOverlayKeydown, true);
-    unlockPageScroll();
+    try {
+      overlayOpen = false;
+      if (overlayRoot) {
+        overlayRoot.classList.remove('altq-open');
+        overlayRoot.setAttribute('aria-hidden', 'true');
+      }
+      window.removeEventListener('keydown', handleOverlayKeydown, true);
+    } finally {
+      unlockPageScroll();
+    }
   }
 
   async function activateSelectedTab() {
     const selected = tabs[selectedIndex];
-    if (!selected) {
-      closeOverlay();
-      return;
-    }
-
     try {
-      await chrome.runtime.sendMessage({ type: 'ACTIVATE_TAB', tabId: selected.id });
+      if (selected) {
+        await chrome.runtime.sendMessage({ type: 'ACTIVATE_TAB', tabId: selected.id });
+      }
     } catch (_err) {
       // Ignore.
+    } finally {
+      closeOverlay();
     }
-
-    closeOverlay();
   }
 
   function handleOverlayKeydown(event) {
@@ -281,26 +287,31 @@
     lastTriggerAt = now;
 
     const wasOpen = overlayOpen;
-    await fetchData();
 
-    if (!tabs.length) {
+    try {
+      await fetchData();
+
+      if (!tabs.length) {
+        closeOverlay();
+        return;
+      }
+
+      createOverlay();
+      overlayOpen = true;
+      overlayRoot.classList.add('altq-open');
+      overlayRoot.setAttribute('aria-hidden', 'false');
+      lockPageScroll();
+
+      if (wasOpen) {
+        selectedIndex = (selectedIndex + 1) % tabs.length;
+      }
+
+      render();
+      window.removeEventListener('keydown', handleOverlayKeydown, true);
+      window.addEventListener('keydown', handleOverlayKeydown, true);
+    } catch (_err) {
       closeOverlay();
-      return;
     }
-
-    createOverlay();
-    overlayOpen = true;
-    overlayRoot.classList.add('altq-open');
-    overlayRoot.setAttribute('aria-hidden', 'false');
-    lockPageScroll();
-
-    if (wasOpen) {
-      selectedIndex = (selectedIndex + 1) % tabs.length;
-    }
-
-    render();
-    window.removeEventListener('keydown', handleOverlayKeydown, true);
-    window.addEventListener('keydown', handleOverlayKeydown, true);
   }
 
   chrome.runtime.onMessage.addListener((message) => {
